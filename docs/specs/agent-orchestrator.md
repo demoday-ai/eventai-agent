@@ -91,7 +91,7 @@ ConversationHandler(
 
 ### NL_REBUILD (5)
 
-| Триггер | Обра��отчик | Следующее состояние |
+| Триггер | Обработчик | Следующее состояние |
 |---------|-----------|-------------------|
 | Свободный текст | `nl_rebuild_text()` | NL_REBUILD (reply) или ONBOARD_CONFIRM (profile) |
 
@@ -166,7 +166,7 @@ ConversationHandler(
 ИНСТРУМЕНТЫ (tools):
 - show_project - показать детали ОДНОГО проекта по номеру
 - show_profile - показать профиль пользователя
-- compare_projects - сравнить 2-5 п��оектов
+- compare_projects - сравнить 2-5 проектов
 - generate_questions - подготовить вопросы для Q&A к проекту
 - {get_followup | get_pipeline} - роль-зависимый инструмент
 - rebuild_profile - перезапустить профилирование
@@ -192,7 +192,7 @@ LLM-диалог для сбора профиля. Промпт: `get_profile_ag
 
 ### Параметры
 
-- Максимум 2 LLM-отве��а (ограничение в промпте: "после 2-го ОБЯЗАТЕЛЬНО action=profile")
+- Максимум 2 LLM-ответа (ограничение в промпте: "после 2-го ОБЯЗАТЕЛЬНО action=profile")
 - Минимум 1 уточняющий вопрос (промпт: "первое сообщение ВСЕГДА action=reply")
 - Guard в коде: если 1 user message + 0 assistant -> принудительный follow-up
 - json_mode=True, формат: `{"action": "reply"|"profile", ...}`
@@ -279,7 +279,7 @@ FALLBACK_MODEL = "openai/gpt-4o-mini"
 ```python
 TIMEOUT = httpx.Timeout(
     connect=10.0,
-    read=180.0,   # 3 минуты на чте��ие
+    read=180.0,   # 3 минуты на чтение
     write=30.0,
     pool=10.0,
 )

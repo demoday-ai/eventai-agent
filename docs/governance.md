@@ -47,7 +47,7 @@
 
 | Мера | Реализация |
 |---|---|
-| Белый список инстру��ентов | Реализовано: show_project, show_profile, compare_projects, generate_questions, get_followup, get_pipeline, rebuild_profile. Планируется: ask_organizer |
+| Белый список инструментов | Реализовано: show_project, show_profile, compare_projects, generate_questions, get_followup, get_pipeline, rebuild_profile. Планируется: ask_organizer |
 | Валидация аргументов | Каждый вызов инструмента проверяется по типам и обязательным полям |
 | Изоляция контекстов | Персональные данные организатора не попадают в промпты агента |
 | Ограничение данных | В LLM - только название/теги/описание проектов; ФИО и контакты не отправляются |

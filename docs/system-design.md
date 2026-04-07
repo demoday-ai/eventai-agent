@@ -144,7 +144,7 @@ ROLE_SELECTION -- кнопка роли --> NL_PROFILING
 - **chat_history**: максимум 20 сообщений в `program_chat`. Старые обрезаются FIFO
 - **Системный промпт**: роль, профиль, список доступных инструментов. Не содержит PII
 - **Артефакты** (при show_project / compare_projects): передаются как user message, не system - для защиты от injection
-- **Context budget**: системный промпт (~2000 токенов) + tool definitions (~1500) + профиль + ре��омендации (~2000) + ист��рия (до ~2600) + support_chat_history (~500) = ~8600 токенов. Лимит модели позволяет
+- **Context budget**: системный промпт (~2000 токенов) + tool definitions (~1500) + профиль + рекомендации (~2000) + история (до ~2600) + support_chat_history (~500) = ~8600 токенов. Лимит модели позволяет
 
 Детали - `specs/memory-context.md`.
 
