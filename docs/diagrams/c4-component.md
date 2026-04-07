@@ -3,41 +3,58 @@
 Внутренняя структура Telegram-бота - ядро агентской системы.
 
 ```mermaid
-C4Component
-    title Telegram Bot - Component Diagram
+flowchart TB
+    telegram["Telegram API<br/><i>updates, сообщения</i>"]
 
-    Container_Boundary(bot, "Telegram Bot (python-telegram-bot 21.x)") {
-        Component(conv, "ConversationHandler", "PTB", "State machine: 7 состояний, переходы между фазами")
-        Component(profiler, "Profiler", "Python", "NL-профилирование через LLM, макс. 2 уточнения, извлечение JSON-профиля")
-        Component(retriever, "Retriever", "Python", "Embed профиля, Qdrant top-30, schedule rerank, LLM-резюме, top-15")
-        Component(agent_mode, "AgentMode", "Python", "Tool calling, диалог с LLM, история до 20 сообщений")
-        Component(tool_dispatch, "ToolDispatcher", "Python", "7 инструментов: show_project, show_profile, compare_projects, generate_questions, get_followup, get_pipeline, rebuild_profile")
-        Component(support, "SupportChat", "Python", "Вопрос пользователя -> API -> админка -> ответ -> бот")
-        Component(llm_client, "LLM Client", "Python", "Key rotation (N ключей), fallback model (GPT-4o-Mini), retry (3 attempts, exp backoff)")
-        Component(embedding, "Embedding Service", "Python", "Gemini 768d, Qdrant client, upsert/search")
-    }
+    subgraph bot["Telegram Bot (PTB 21.x)"]
+        direction TB
 
-    System_Ext(telegram, "Telegram API", "Updates, сообщения")
-    System_Ext(openrouter, "OpenRouter", "Chat Completions API")
-    System_Ext(qdrant, "Qdrant", "Vector search")
-    System_Ext(pg, "PostgreSQL", "Профили, проекты")
-    System_Ext(celery, "Celery Worker", "Async task execution")
+        subgraph fsm["State Machine"]
+            conv["ConversationHandler<br/><i>7 состояний,<br/>переходы между фазами</i>"]
+        end
 
-    Rel(telegram, conv, "User messages, callbacks")
-    Rel(conv, profiler, "ONBOARD_NL_PROFILE state")
-    Rel(conv, agent_mode, "VIEW_PROGRAM state")
-    Rel(conv, support, "Support thread")
-    Rel(profiler, llm_client, "Profile extraction prompt")
-    Rel(retriever, embedding, "Embed profile text")
-    Rel(retriever, llm_client, "LLM summaries for top-15")
-    Rel(agent_mode, llm_client, "System prompt + history + tools")
-    Rel(agent_mode, tool_dispatch, "tool_call -> dispatch -> result")
-    Rel(tool_dispatch, pg, "Данные проектов, контакты")
-    Rel(llm_client, openrouter, "HTTP: chat/completions")
-    Rel(llm_client, celery, "agent_chat_task, generate_recommendations")
-    Rel(embedding, openrouter, "HTTP: embeddings")
-    Rel(embedding, qdrant, "Search / upsert vectors")
-    Rel(support, pg, "Support threads via API")
+        subgraph handlers["Обработчики состояний"]
+            profiler["Profiler<br/><i>NL-профилирование,<br/>макс. 2 уточнения,<br/>JSON-профиль</i>"]
+            agent_mode["AgentMode<br/><i>tool calling, диалог с LLM,<br/>chat_history до 20 msg</i>"]
+            support["SupportChat<br/><i>вопрос -> админка -> ответ</i>"]
+        end
 
-    UpdateLayoutConfig($c4ShapeInRow="4", $c4BoundaryInRow="1")
+        subgraph tools["Инструменты"]
+            tool_dispatch["ToolDispatcher<br/><i>whitelist, валидация, роль-доступ</i>"]
+            tool_list["show_project | show_profile<br/>compare_projects | generate_questions<br/>get_followup | get_pipeline<br/>rebuild_profile"]
+        end
+
+        subgraph services["Сервисы"]
+            llm_client["LLM Client<br/><i>key rotation, fallback GPT-4o-Mini,<br/>retry 3x, exp backoff</i>"]
+            embedding["Embedding Service<br/><i>Gemini 768d, Qdrant client</i>"]
+            retriever["Retriever<br/><i>embed -> Qdrant top-30 -><br/>rerank -> LLM-резюме -> top-15</i>"]
+        end
+    end
+
+    subgraph external["Внешние зависимости"]
+        openrouter["OpenRouter<br/><i>Chat Completions</i>"]
+        qdrant["Qdrant<br/><i>vector search</i>"]
+        pg[("PostgreSQL<br/><i>профили, проекты</i>")]
+        celery["Celery Worker<br/><i>async tasks</i>"]
+    end
+
+    telegram -->|"messages, callbacks"| conv
+    conv -->|"ONBOARD_NL_PROFILE"| profiler
+    conv -->|"VIEW_PROGRAM"| agent_mode
+    conv -->|"SUPPORT_CHAT"| support
+
+    profiler -->|"profile prompt"| llm_client
+    agent_mode -->|"system prompt + tools"| llm_client
+    agent_mode -->|"tool_call"| tool_dispatch
+    tool_dispatch --- tool_list
+    tool_dispatch -->|"данные"| pg
+
+    retriever -->|"embed text"| embedding
+    retriever -->|"LLM summaries"| llm_client
+
+    llm_client -->|"HTTP"| openrouter
+    llm_client -->|"async tasks"| celery
+    embedding -->|"HTTP embeddings"| openrouter
+    embedding -->|"search/upsert"| qdrant
+    support -->|"threads"| pg
 ```

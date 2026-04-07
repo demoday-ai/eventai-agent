@@ -3,51 +3,55 @@
 Контейнеры системы EventAI с фокусом на агентскую часть. Web Admin - внешняя система.
 
 ```mermaid
-C4Container
-    title EventAI Agent - Container Diagram
+flowchart TB
+    user["Пользователь<br/><i>гость / эксперт / бизнес</i>"]
 
-    Person(user, "Пользователь", "Гость / Эксперт / Бизнес-партнер")
+    subgraph eventai["EventAI System"]
+        direction TB
 
-    System_Boundary(eventai, "EventAI System") {
+        subgraph app["Application Layer"]
+            bot["Telegram Bot<br/><i>PTB 21.x, ConversationHandler,<br/>agent mode, 7 состояний</i>"]
+            api["FastAPI Backend<br/><i>REST API, 87 эндпоинтов</i>"]
+            celery["Celery Worker<br/><i>async LLM tasks,<br/>reranking, рекомендации</i>"]
+        end
 
-        Container(bot, "Telegram Bot", "python-telegram-bot 21.x", "ConversationHandler, agent mode, 7 состояний")
-        Container(api, "FastAPI Backend", "Python, FastAPI", "REST API, 87 эндпоинтов, бизнес-логика")
-        Container(celery, "Celery Worker", "Python, Celery", "Async LLM tasks, reranking, рекомендации")
+        subgraph storage["Storage Layer"]
+            pg[("PostgreSQL<br/><i>профили, рекомендации,<br/>эксперты, аудит</i>")]
+            qdrant[("Qdrant<br/><i>vector embeddings,<br/>cosine similarity</i>")]
+            redis[("Redis<br/><i>result backend, кэш</i>")]
+            rabbitmq["RabbitMQ<br/><i>message broker</i>"]
+        end
 
-        ContainerDb(pg, "PostgreSQL", "SQL", "Профили, рекомендации, эксперты, аудит")
-        ContainerDb(qdrant, "Qdrant", "Vector DB", "Эмбеддинги проектов, cosine similarity")
-        ContainerDb(redis, "Redis", "In-memory", "Celery result backend, кэш")
-        Container(rabbitmq, "RabbitMQ", "AMQP", "Message broker для Celery")
+        subgraph observability["Observability Layer"]
+            flower["Flower<br/><i>Celery monitoring UI</i>"]
+            health["Health Endpoints<br/><i>/health, /monitoring/llm/*,<br/>/monitoring/celery/*</i>"]
+            logging["Logging<br/><i>model, tokens, latency, key_id<br/>stdout -> Docker logs</i>"]
+        end
+    end
 
-    }
+    subgraph external["Внешние системы"]
+        telegram["Telegram API"]
+        openrouter["OpenRouter<br/><i>GPT-5.1, GPT-4o-Mini,<br/>Gemini Embeddings</i>"]
+        web_admin["Web Admin<br/><i>React 19</i>"]
+    end
 
-    System_Boundary(observability, "Observability") {
-        Container(flower, "Flower", "Python", "Celery monitoring UI, task history, worker stats")
-        Container(health, "Health/Monitoring", "FastAPI endpoints", "/health, /monitoring/llm/*, /monitoring/celery/*")
-        Container(logging, "Logging", "Python logging", "model, tokens, latency, key_id (stdout -> Docker logs)")
-    }
+    user -->|"сообщения"| telegram
+    telegram -->|"updates"| bot
+    bot -->|"HTTP"| api
+    bot -->|"tasks"| celery
 
-    System_Ext(telegram, "Telegram API", "Доставка сообщений")
-    System_Ext(openrouter, "OpenRouter", "LLM API: GPT-5.1, GPT-4o-Mini, Gemini Embeddings")
-    System_Ext(web_admin, "Web Admin", "React 19 - админка организатора (external)")
+    celery -->|"Chat, Embeddings"| openrouter
+    celery -->|"vector search"| qdrant
+    celery -->|"R/W"| pg
+    celery -->|"AMQP"| rabbitmq
+    celery -->|"results"| redis
 
-    Rel(user, telegram, "Сообщения, кнопки")
-    Rel(telegram, bot, "Updates (polling/webhook)")
-    Rel(bot, api, "HTTP: профили, проекты, рекомендации")
-    Rel(bot, celery, "Tasks: agent_chat, generate_recommendations")
-    Rel(celery, openrouter, "Chat Completions, Embeddings")
-    Rel(celery, qdrant, "Vector search, upsert")
-    Rel(celery, pg, "R/W: профили, рекомендации")
-    Rel(celery, rabbitmq, "AMQP: task queue")
-    Rel(celery, redis, "Result backend")
-    Rel(api, pg, "SQL queries")
-    Rel(api, qdrant, "Vector queries")
-    Rel(web_admin, api, "REST API: данные, ответы на вопросы")
+    api -->|"SQL"| pg
+    api -->|"vectors"| qdrant
+    web_admin -->|"REST API"| api
 
-    Rel(flower, celery, "Inspect: active tasks, workers")
-    Rel(health, api, "Status: LLM keys, Celery, services")
-    Rel(logging, bot, "stdout: handler logs")
-    Rel(logging, celery, "stdout: task logs, LLM metrics")
-
-    UpdateLayoutConfig($c4ShapeInRow="3", $c4BoundaryInRow="2")
+    flower -.->|"inspect"| celery
+    health -.->|"status"| api
+    logging -.->|"stdout"| bot
+    logging -.->|"stdout"| celery
 ```
