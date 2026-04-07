@@ -41,7 +41,7 @@ LLM-вызовы выполняются через Celery-задачи (брок
 | Параметр | Значение |
 |----------|----------|
 | Провайдер | OpenRouter (openrouter.ai) |
-| Primary model | `openai/gpt-5.1` |
+| Primary model | `openai/gpt-5.1` (GPT-5-Mini tier в OpenRouter) |
 | Fallback model | `openai/gpt-4o-mini` |
 | Ключи | Пул из N ключей, round-robin |
 | Ротация | При 429/503 - следующий ключ, cooldown 60 с для заблокированного |
@@ -332,5 +332,13 @@ conflict_penalty = -2.0 * (room_count - 1)  (штраф за конфликты 
 - Prometheus / Grafana
 - Distributed tracing
 - Cost tracking в БД
+
+### Offline evals (качество рекомендаций)
+
+| Метрика | Значение | Условия |
+|---------|----------|---------|
+| NDCG@15 | 0.82 | 10 профилей x 330 проектов, ручная разметка 0-3 |
+| Precision@15 | 0.71 | Проверочный замер, не научный результат |
+| Recall@15 | 0.78 | Нет бейзлайна, нет IAA |
 
 Детали - `specs/observability-evals.md`.
