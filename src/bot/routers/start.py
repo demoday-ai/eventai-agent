@@ -7,6 +7,7 @@ Transitions:
 """
 
 import logging
+from uuid import UUID
 
 from aiogram import F, Router
 from aiogram.filters import CommandStart
