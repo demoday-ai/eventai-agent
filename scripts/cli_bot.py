@@ -188,19 +188,21 @@ async def setup_dispatcher(bot: CLIBot) -> Dispatcher:
     engine = create_async_engine(settings.database_url, pool_size=5)
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-    # Platform client (real OpenRouter via settings)
-    platform = PlatformClient(
-        platform_url=settings.platform_url,
-        master_token=settings.master_token,
-    )
-    # For CLI testing, set token directly to OpenRouter API key
+    # Platform client - direct to OpenRouter for CLI testing
     openrouter_key = os.environ.get("OPENROUTER_API_KEY", "")
     if openrouter_key:
         from pydantic import SecretStr
+        platform = PlatformClient(
+            platform_url="https://openrouter.ai/api",
+            master_token="unused",
+        )
         platform._token = SecretStr(openrouter_key)
-        platform.platform_url = "https://openrouter.ai/api"
         print(f"{DIM}LLM: OpenRouter ({settings.llm_model}){RESET}")
     else:
+        platform = PlatformClient(
+            platform_url=settings.platform_url,
+            master_token=settings.master_token,
+        )
         print(f"{YELLOW}WARNING: OPENROUTER_API_KEY not set, LLM calls will fail{RESET}")
 
     # DB session middleware (simplified for CLI)

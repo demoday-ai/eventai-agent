@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS projects (
     github_url        TEXT,
     presentation_url  TEXT,
     parsed_content    JSONB,
-    embedding         vector(768)
+    embedding         vector(3072)
 );
 
 CREATE INDEX IF NOT EXISTS idx_projects_event_id ON projects(event_id);

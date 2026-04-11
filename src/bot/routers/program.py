@@ -213,12 +213,12 @@ async def view_program_text(
         event=event,
     )
 
+    # Load chat history from state (before try block so it's always defined)
+    program_chat: list[dict] = state_data.get("program_chat", [])
+    program_chat.append({"role": "user", "content": message.text})
+
     try:
         agent = create_agent(platform.platform_url, platform.token)
-
-        # Load chat history from state
-        program_chat: list[dict] = state_data.get("program_chat", [])
-        program_chat.append({"role": "user", "content": message.text})
 
         # Trim history
         if len(program_chat) > MAX_CHAT_HISTORY:
@@ -236,7 +236,7 @@ async def view_program_text(
             timeout=settings.agent_timeout,
         )
 
-        reply_text = agent_result.data
+        reply_text = agent_result.output
         if not reply_text:
             reply_text = "Не удалось получить ответ. Попробуйте переформулировать."
 

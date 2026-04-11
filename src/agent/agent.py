@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.openai import OpenAIModel
+from pydantic_ai.providers.openai import OpenAIProvider
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.event import Event
@@ -40,17 +41,20 @@ def create_agent(platform_url: str, agent_token: str) -> Agent[AgentDeps, str]:
     Returns:
         Configured Agent instance with all tools registered.
     """
-    model = OpenAIModel(
-        model_name="openai/gpt-5.1",
+    provider = OpenAIProvider(
         base_url=f"{platform_url}/v1",
         api_key=agent_token,
+    )
+    model = OpenAIModel(
+        model_name="openai/gpt-4o-mini",
+        provider=provider,
     )
 
     agent = Agent(
         model=model,
         deps_type=AgentDeps,
-        result_type=str,
-        system_prompt=_build_system_prompt,
+        output_type=str,
+        instructions=_build_system_prompt,
     )
 
     from src.agent.tools import register_tools

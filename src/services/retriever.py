@@ -89,10 +89,8 @@ async def _generate_pipeline(
     # 5. Schedule-aware rerank
     ranked = _schedule_rerank(candidates, slots)
 
-    # 6. Save recommendations
-    await _save_recommendations(db, profile_id, ranked)
-
-    return ranked
+    # 6. Save recommendations and return Recommendation objects
+    return await _save_recommendations(db, profile_id, ranked)
 
 
 async def _pgvector_search(
@@ -104,10 +102,10 @@ async def _pgvector_search(
     result = await db.execute(
         text("""
             SELECT id, title, description, tags, tech_stack, author, telegram_contact,
-                   parsed_content, embedding <=> :embedding::vector AS distance
+                   parsed_content, embedding <=> cast(:embedding as vector) AS distance
             FROM projects
-            WHERE event_id = :event_id AND embedding IS NOT NULL
-            ORDER BY embedding <=> :embedding::vector
+            WHERE event_id = cast(:event_id as uuid) AND embedding IS NOT NULL
+            ORDER BY embedding <=> cast(:embedding as vector)
             LIMIT :limit
         """),
         {"embedding": embedding_str, "event_id": str(event_id), "limit": limit},
@@ -132,10 +130,12 @@ async def _pgvector_search(
 
 def _filter_past_slots(candidates: list[dict], slots: dict[UUID, dict], now: datetime) -> list[dict]:
     """Remove projects whose slot has already passed."""
+    # Make now naive if slot times are naive (PostgreSQL TIMESTAMP without tz)
+    now_naive = now.replace(tzinfo=None) if now.tzinfo else now
     filtered = []
     for c in candidates:
         slot = slots.get(c["project_id"])
-        if slot and slot["start_time"] < now:
+        if slot and slot["start_time"].replace(tzinfo=None) < now_naive:
             continue
         filtered.append(c)
     return filtered
@@ -282,10 +282,11 @@ async def _load_schedule_slots(db: AsyncSession, event_id: UUID) -> dict[UUID, d
 
 async def _save_recommendations(
     db: AsyncSession, profile_id: UUID, ranked: list[dict]
-) -> None:
+) -> list[Recommendation]:
     """Delete old recommendations and save new ones."""
     await db.execute(delete(Recommendation).where(Recommendation.profile_id == profile_id))
 
+    recs = []
     for r in ranked:
         slot = r.get("slot")
         rec = Recommendation(
@@ -298,5 +299,7 @@ async def _save_recommendations(
             visit_order=r.get("visit_order"),
         )
         db.add(rec)
+        recs.append(rec)
 
     await db.flush()
+    return recs

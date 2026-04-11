@@ -30,6 +30,6 @@ class Project(Base):
     presentation_url: Mapped[str | None] = mapped_column(String(2048), default=None)
     parsed_content: Mapped[dict | None] = mapped_column(JSONB, default=None)
     embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(768),
+        Vector(3072),
         default=None,
     )
