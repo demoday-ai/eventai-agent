@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     semaphore_limit: int = 10
     agent_timeout: float = 15.0
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 settings = Settings()

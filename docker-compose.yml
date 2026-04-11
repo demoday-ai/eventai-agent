@@ -21,6 +21,7 @@ services:
 
   postgres:
     image: pgvector/pgvector:pg16
+    ports: ["5432:5432"]
     environment:
       POSTGRES_DB: eventai
       POSTGRES_USER: eventai
@@ -39,6 +40,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    ports: ["6379:6379"]
     command: redis-server --maxmemory 100mb --maxmemory-policy allkeys-lru --save "" --requirepass ${REDIS_PASSWORD}
     healthcheck:
       test: redis-cli -a ${REDIS_PASSWORD} ping
