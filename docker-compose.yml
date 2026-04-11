@@ -1,0 +1,51 @@
+services:
+  bot:
+    build: .
+    env_file: .env
+    ports: ["8080:8080"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+    stop_grace_period: 30s
+    healthcheck:
+      test: curl -f http://localhost:8080/health
+      interval: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits: { memory: 256M }
+    logging:
+      driver: json-file
+      options: { max-size: "50m", max-file: "3" }
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: eventai
+      POSTGRES_USER: eventai
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./scripts/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+    healthcheck:
+      test: pg_isready -U eventai
+      interval: 5s
+    command: postgres -c shared_buffers=64MB -c work_mem=4MB
+    deploy:
+      resources:
+        limits: { memory: 256M }
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --maxmemory 100mb --maxmemory-policy allkeys-lru --save "" --requirepass ${REDIS_PASSWORD}
+    healthcheck:
+      test: redis-cli -a ${REDIS_PASSWORD} ping
+      interval: 5s
+    deploy:
+      resources:
+        limits: { memory: 128M }
+
+volumes:
+  pgdata:

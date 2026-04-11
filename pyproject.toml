@@ -1,0 +1,21 @@
+[project]
+name = "eventai-agent"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "aiogram>=3.27",
+    "pydantic-ai>=0.2",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg",
+    "httpx",
+    "pgvector",
+    "redis[hiredis]",
+    "tenacity",
+    "python-pptx",
+    "pymupdf",
+    "pydantic-settings",
+    "aiohttp",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "ruff"]

@@ -1,0 +1,35 @@
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    # Bot
+    bot_token: str
+    bot_mode: str = "polling"  # polling or webhook
+
+    # Platform
+    platform_url: str = "http://localhost:8000"
+    master_token: str = ""
+
+    # Database
+    database_url: str = "postgresql+asyncpg://eventai:eventai@localhost:5432/eventai"
+
+    # Redis
+    redis_url: str = "redis://localhost:6379/0"
+    redis_password: str = ""
+
+    # LLM
+    llm_model: str = "openai/gpt-5.1"
+    embedding_model: str = "google/gemini-embedding-001"
+
+    # Organizer
+    organizer_chat_id: int = 0
+
+    # Limits
+    rate_limit_per_minute: int = 10
+    semaphore_limit: int = 10
+    agent_timeout: float = 15.0
+
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+
+
+settings = Settings()
