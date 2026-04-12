@@ -45,8 +45,9 @@ def create_agent(platform_url: str, agent_token: str) -> Agent[AgentDeps, str]:
         base_url=f"{platform_url}/v1",
         api_key=agent_token,
     )
+    from src.core.config import settings
     model = OpenAIModel(
-        model_name="openai/gpt-4o-mini",
+        model_name=settings.llm_model,
         provider=provider,
     )
 
