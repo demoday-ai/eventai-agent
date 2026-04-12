@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     # LLM
     llm_model: str = "deepseek/deepseek-v3.2"
     embedding_model: str = "google/gemini-embedding-001"
+    openrouter_api_key: str = ""  # for standalone mode (no llm-agent-platform)
 
     # Organizer
     organizer_chat_id: int = 0

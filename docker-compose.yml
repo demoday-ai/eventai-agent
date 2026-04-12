@@ -30,6 +30,7 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./scripts/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
       - ./scripts/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+      - ./scripts/demo_seed.sql:/docker-entrypoint-initdb.d/03-demo-seed.sql
     healthcheck:
       test: pg_isready -U eventai
       interval: 5s

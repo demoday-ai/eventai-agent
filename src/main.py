@@ -65,6 +65,84 @@ async def run_health_server() -> web.AppRunner:
     return runner
 
 
+async def _auto_seed() -> None:
+    """Seed demo data if database is empty (first run)."""
+    from sqlalchemy import select, text
+    from src.core.database import async_session
+    from src.models.event import Event
+
+    async with async_session() as db:
+        result = await db.execute(select(Event).limit(1))
+        has_data = result.scalar_one_or_none() is not None
+
+        if has_data:
+            logger.info("Database has data, skipping seed")
+        else:
+            logger.info("Empty database - seeding demo data...")
+            from pathlib import Path
+
+            seed_file = Path(__file__).parent.parent / "scripts" / "demo_seed.sql"
+            if seed_file.exists():
+                sql = seed_file.read_text()
+                for statement in sql.split(";"):
+                    stmt = statement.strip()
+                    if stmt and not stmt.startswith("--"):
+                        try:
+                            await db.execute(text(stmt))
+                        except Exception as e:
+                            logger.warning("Seed SQL error (continuing): %s", e)
+                await db.commit()
+                logger.info("Demo data seeded")
+
+        # Always check and embed projects if needed
+        if settings.openrouter_api_key:
+            try:
+                await _embed_demo_projects(db)
+            except Exception as e:
+                logger.warning("Auto-embedding failed (tag overlap will be used): %s", e)
+
+
+async def _embed_demo_projects(db) -> None:
+    """Embed demo projects via OpenRouter for pgvector search."""
+    import httpx
+    from sqlalchemy import select, text as sql_text
+    from src.models.project import Project
+
+    result = await db.execute(select(Project).where(Project.embedding.is_(None)))
+    projects = result.scalars().all()
+
+    if not projects:
+        return
+
+    logger.info("Embedding %d projects...", len(projects))
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        for project in projects:
+            tags = ", ".join(project.tags or [])
+            stack = ", ".join(project.tech_stack or [])
+            embed_text = f"{project.title}. {project.description}. Теги: {tags}. Стек: {stack}"
+
+            resp = await client.post(
+                "https://openrouter.ai/api/v1/embeddings",
+                headers={"Authorization": f"Bearer {settings.openrouter_api_key}"},
+                json={"model": settings.embedding_model, "input": embed_text},
+            )
+            if resp.status_code != 200:
+                logger.warning("Embedding failed for %s: %s", project.title, resp.status_code)
+                continue
+
+            embedding = resp.json()["data"][0]["embedding"]
+            emb_str = "[" + ",".join(str(x) for x in embedding) + "]"
+            await db.execute(
+                sql_text("UPDATE projects SET embedding = cast(:emb as vector) WHERE id = cast(:pid as uuid)"),
+                {"emb": emb_str, "pid": str(project.id)},
+            )
+            logger.info("  Embedded: %s (dim=%d)", project.title, len(embedding))
+
+    await db.commit()
+    logger.info("All projects embedded")
+
+
 async def main() -> None:
     logger.info("EventAI Agent starting...")
 
@@ -81,21 +159,42 @@ async def main() -> None:
         raise
 
     # --- Platform Client ---
-    platform = PlatformClient(
-        platform_url=settings.platform_url,
-        master_token=settings.master_token,
-    )
-    try:
-        await platform.register()
-        logger.info("Platform registered: %s", platform)
-    except Exception as e:
-        logger.warning("Platform registration failed (will retry on first call): %s", e)
+    # Standalone mode: use OpenRouter directly (no llm-agent-platform)
+    # Platform mode: register with llm-agent-platform proxy
+    if settings.openrouter_api_key and not settings.master_token:
+        from pydantic import SecretStr
+        platform = PlatformClient(
+            platform_url="https://openrouter.ai/api",
+            master_token="unused",
+        )
+        platform._token = SecretStr(settings.openrouter_api_key)
+        logger.info("Standalone mode: OpenRouter direct (%s)", settings.llm_model)
+    else:
+        platform = PlatformClient(
+            platform_url=settings.platform_url,
+            master_token=settings.master_token,
+        )
+        try:
+            await platform.register()
+            logger.info("Platform registered: %s", platform)
+        except Exception as e:
+            logger.warning("Platform registration failed (will retry): %s", e)
+
+    # --- Auto-seed demo data ---
+    await _auto_seed()
 
     # --- FSM Storage ---
     # Use a separate Redis connection for FSM (needs decode_responses=True)
     storage = RedisStorage(redis)
 
     # --- Bot + Dispatcher ---
+    if not settings.bot_token or settings.bot_token == "test":
+        logger.error(
+            "BOT_TOKEN is not set or invalid. "
+            "Get a token from @BotFather in Telegram and set it in .env"
+        )
+        raise SystemExit(1)
+
     bot = Bot(
         token=settings.bot_token,
         default=DefaultBotProperties(parse_mode=None),
