@@ -91,6 +91,27 @@ async def nl_profile_text(
         if not llm_result.get("message"):
             llm_result["message"] = "Расскажите подробнее о ваших интересах."
 
+    # Guard: force profile extraction after MAX_NL_TURNS
+    if action == "reply" and nl_turn >= MAX_NL_TURNS - 1:
+        # Re-call LLM with explicit instruction to extract profile now
+        force_msg = {"role": "user", "content": "Извлеки профиль из всего диалога. action=profile. Обязательно."}
+        forced_result = await chat_for_profile(platform, system_prompt, nl_conversation + [force_msg])
+        if forced_result.get("action") == "profile":
+            llm_result = forced_result
+            action = "profile"
+        else:
+            # Last resort: extract what we can from conversation
+            all_user_text = " ".join(
+                m["content"] for m in nl_conversation if m["role"] == "user"
+            )
+            llm_result = {
+                "action": "profile",
+                "interests": [],
+                "goals": [],
+                "summary": all_user_text[:200],
+            }
+            action = "profile"
+
     if action == "reply":
         reply_text = llm_result.get("message", "Расскажите подробнее.")
         nl_conversation.append({"role": "assistant", "content": reply_text})

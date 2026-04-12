@@ -1,14 +1,25 @@
 """Tool implementations for the EventAI PydanticAI agent.
 
-Eight tools:
-- show_project      -- show details of one recommended project (by rank or name)
-- show_profile      -- show current user profile
-- compare_projects  -- compare 2-5 projects via LLM-generated matrix
-- generate_questions -- generate Q&A questions for a project
-- update_status     -- update project status in business pipeline
-- filter_projects   -- filter recommended projects by tag or technology
-- get_summary       -- follow-up (guest) or pipeline (business)
-- github_drilldown  -- GitHub repo analysis: metrics, files, tree, commits, contributors
+Eight tools available to the LLM agent during VIEW_PROGRAM state:
+
+- show_project      -- карточка проекта: описание, стек, метрики из артефактов, автор.
+                       Принимает номер (#1) или название. Поиск среди рекомендаций.
+- show_profile      -- текущий профиль гостя: теги, цели, summary. Без параметров.
+- compare_projects  -- сравнение 2-5 проектов. LLM генерирует матрицу по критериям
+                       (тематика/стек/применимость для гостей, стадия/бизнес-модель для бизнеса).
+- generate_questions -- 3-5 вопросов для Q&A автору. Персонализированы под роль
+                       (студент -> технические, HR -> найм/команда/пилот).
+- update_status     -- бизнес-пайплайн: interested/contacted/meeting_scheduled/rejected/in_progress.
+                       Только role=business. Создает BusinessFollowup в БД.
+- filter_projects   -- фильтр рекомендаций по тегу или технологии (case-insensitive).
+- get_summary       -- итоги: для гостей follow-up пакет (контакты + шаблон),
+                       для бизнеса pipeline (статусы + шаблоны обращений).
+- github_drilldown  -- GitHub-репозиторий через gh CLI (live).
+                       summary: полный анализ (stars, commits, health, red flags).
+                       file: содержимое файла (до 3000 символов).
+                       tree: структура файлов (до 100 записей).
+                       commits: последние 10 коммитов.
+                       contributors: топ-10 контрибьюторов с процентами.
 """
 
 import asyncio
@@ -33,7 +44,14 @@ def register_tools(agent: Agent[AgentDeps, str]) -> None:
     async def show_project(
         ctx: RunContext[AgentDeps], project_identifier: str
     ) -> str:
-        """Показать детали проекта по номеру или названию."""
+        """Показать карточку проекта: описание, стек, метрики из артефактов (PPTX/PDF/README), автор.
+
+        Args:
+            project_identifier: номер (#1, "1") или название проекта ("ChatLaw").
+                Поиск среди рекомендаций пользователя.
+        Returns:
+            Форматированная карточка с данными из БД + parsed_content (артефакты).
+        """
         deps = ctx.deps
 
         # Try rank first
@@ -76,7 +94,7 @@ def register_tools(agent: Agent[AgentDeps, str]) -> None:
 
     @agent.tool
     async def show_profile(ctx: RunContext[AgentDeps]) -> str:
-        """Показать текущий профиль (теги, интересы, цели)."""
+        """Показать текущий профиль гостя: выбранные теги, цели, NL-summary, бизнес-поля."""
         deps = ctx.deps
         if not deps.profile:
             return "Профиль не создан. Используйте /rebuild для персонализации."
@@ -89,7 +107,15 @@ def register_tools(agent: Agent[AgentDeps, str]) -> None:
     async def compare_projects(
         ctx: RunContext[AgentDeps], project_ranks: list[int]
     ) -> str:
-        """Сравнить 2-5 проектов. Матрица сравнения по критериям."""
+        """Сравнить 2-5 проектов через LLM-матрицу.
+
+        Критерии зависят от роли: для гостей (тематика, стек, применимость),
+        для бизнеса (стадия, команда, бизнес-модель, готовность к пилоту).
+        Использует отдельный LLM-вызов для генерации матрицы.
+
+        Args:
+            project_ranks: список номеров проектов из рекомендаций, например [1, 3].
+        """
         deps = ctx.deps
         if len(project_ranks) < 2:
             return "Для сравнения нужно минимум 2 проекта."
@@ -145,7 +171,15 @@ def register_tools(agent: Agent[AgentDeps, str]) -> None:
     async def generate_questions(
         ctx: RunContext[AgentDeps], project_rank: int
     ) -> str:
-        """Подготовить 3-5 вопросов для Q&A к проекту."""
+        """Подготовить 3-5 вопросов для Q&A автору проекта.
+
+        Вопросы персонализированы: студент -> технические/архитектурные,
+        HR/бизнес -> найм, команда, пилот, масштабирование.
+        Использует данные из артефактов (презентация, GitHub) для контекста.
+
+        Args:
+            project_rank: номер проекта из рекомендаций.
+        """
         deps = ctx.deps
         rec = _find_recommendation(deps.recommendations, project_rank)
         if not rec:
@@ -218,8 +252,14 @@ def register_tools(agent: Agent[AgentDeps, str]) -> None:
     async def update_status(
         ctx: RunContext[AgentDeps], project_rank: int, status: str
     ) -> str:
-        """Обновить статус проекта в пайплайне. Только для бизнес-партнеров.
-        Допустимые статусы: interested, contacted, meeting_scheduled, rejected, in_progress."""
+        """Обновить статус проекта в бизнес-пайплайне (BusinessFollowup в БД).
+
+        Только для role=business. Создает запись если нет, обновляет если есть.
+
+        Args:
+            project_rank: номер проекта из рекомендаций.
+            status: один из interested, contacted, meeting_scheduled, rejected, in_progress.
+        """
         deps = ctx.deps
         if deps.user.role_code != "business":
             return "Эта функция доступна только бизнес-пользователям."
@@ -258,7 +298,13 @@ def register_tools(agent: Agent[AgentDeps, str]) -> None:
 
     @agent.tool
     async def filter_projects(ctx: RunContext[AgentDeps], tag: str) -> str:
-        """Отфильтровать рекомендованные проекты по тегу или технологии."""
+        """Отфильтровать рекомендованные проекты по тегу или технологии (case-insensitive).
+
+        Ищет совпадение в project.tags и project.tech_stack.
+
+        Args:
+            tag: тег или технология для фильтрации, например "NLP" или "PyTorch".
+        """
         deps = ctx.deps
         if not deps.recommendations:
             return "Нет рекомендаций. Используйте /rebuild."
@@ -295,7 +341,11 @@ def register_tools(agent: Agent[AgentDeps, str]) -> None:
 
     @agent.tool
     async def get_summary(ctx: RunContext[AgentDeps]) -> str:
-        """Итоги. Гости: follow-up (контакты + шаблон). Бизнес: pipeline (статусы)."""
+        """Итоговая сводка по рекомендованным проектам.
+
+        Гости: follow-up пакет (ранжированный список + Telegram-контакты + шаблон сообщения).
+        Бизнес: pipeline (статусы проектов + контакты + шаблоны первого/повторного обращения).
+        """
         deps = ctx.deps
         if deps.user.role_code == "business":
             return await _get_pipeline(deps)
@@ -308,14 +358,24 @@ def register_tools(agent: Agent[AgentDeps, str]) -> None:
         query_type: str,
         file_path: str | None = None,
     ) -> str:
-        """Получить данные из GitHub-репозитория проекта.
+        """Получить данные из GitHub-репозитория проекта (live через gh CLI subprocess).
 
-        query_type:
-        - "summary" - кэшированные метрики (коммиты, контрибьюторы, тесты, CI, red flags)
-        - "file" - содержимое файла (нужен file_path: "requirements.txt", "src/main.py")
-        - "tree" - структура файлов (file_path опционально для поддиректории)
-        - "commits" - последние 10 коммитов
-        - "contributors" - список контрибьюторов
+        Все вызовы идут через `gh api` (GitHub REST API), без клонирования репо.
+        Требует установленный gh CLI и опционально GITHUB_TOKEN для rate limit.
+
+        Args:
+            project_identifier: номер (#1) или название проекта.
+            query_type:
+                "summary" - полный анализ: stars, forks, commits, contributors,
+                    languages, has_tests/ci/docker, health_score, red_flags.
+                    Внутри ~6 параллельных gh api вызовов.
+                "file" - содержимое одного файла (до 3000 символов, base64 decode).
+                    Нужен file_path.
+                "tree" - структура файлов (до 100 записей, recursive).
+                    file_path опционально для поддиректории.
+                "commits" - последние 10 коммитов (sha, date, author, message).
+                "contributors" - топ-10 контрибьюторов с количеством и процентом коммитов.
+            file_path: путь к файлу/директории (для query_type file/tree).
         """
         deps = ctx.deps
 
@@ -383,14 +443,21 @@ def register_tools(agent: Agent[AgentDeps, str]) -> None:
             pass
 
         if query_type == "summary":
-            # Use cached data from parsed_content["github"]
-            pc = project.parsed_content if isinstance(project.parsed_content, dict) else {}
-            gh = pc.get("github")
-            if not gh:
-                return (
-                    f"GitHub-метрики для {project.title} ещё не собраны. "
-                    "Запустите scripts/analyze_github.py"
+            # Live analysis via gh API
+            from src.services.github_analyzer import analyze_repo
+
+            try:
+                gh = await asyncio.wait_for(
+                    analyze_repo(owner, repo, token), timeout=20.0,
                 )
+            except asyncio.TimeoutError:
+                return "GitHub не ответил в течение 20 секунд."
+            except Exception as e:
+                logger.error("GitHub analyze_repo error: %s", e)
+                return f"Ошибка анализа репозитория: {e}"
+
+            if gh.get("error"):
+                return gh["error"]
 
             lines = [f"GitHub: {gh.get('full_name', f'{owner}/{repo}')}\n"]
             lines.append(f"Звезды: {gh.get('stars', 0)} | Форки: {gh.get('forks_count', 0)}")

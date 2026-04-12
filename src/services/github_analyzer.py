@@ -24,7 +24,10 @@ def parse_github_url(url: str) -> tuple[str, str] | None:
     match = re.match(r"https?://github\.com/([^/]+)/([^/]+)", url.strip().rstrip("/"))
     if not match:
         return None
-    return match.group(1), match.group(2).rstrip(".git")
+    repo = match.group(2)
+    if repo.endswith(".git"):
+        repo = repo[:-4]
+    return match.group(1), repo
 
 
 async def gh_api(endpoint: str, token: str = "", timeout: float = 15.0) -> dict | list | None:

@@ -334,12 +334,15 @@ async def cb_contact_author(
 
 
 @router.message(BotStates.view_detail, F.text)
-async def detail_text(message: Message, state: FSMContext) -> None:
-    """Handle text in detail view: hint user to use buttons or go back."""
-    state_data = await state.get_data()
-    rank = state_data.get("current_project_rank", "?")
-    await message.answer(
-        f"Вы просматриваете проект #{rank}.\n"
-        "Используйте кнопки ниже или напишите /start для начала.",
-        reply_markup=detail_keyboard(int(rank) if isinstance(rank, int) else 1),
-    )
+async def detail_text(
+    message: Message,
+    state: FSMContext,
+    db: AsyncSession,
+    platform: PlatformClient,
+) -> None:
+    """Handle free text in detail view: forward to agent (view_program handler)."""
+    # Switch to view_program so the agent handles the message
+    await state.set_state(BotStates.view_program)
+
+    from src.bot.routers.program import view_program_text
+    await view_program_text(message, state, db, platform)

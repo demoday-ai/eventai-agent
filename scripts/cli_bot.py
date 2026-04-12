@@ -218,7 +218,7 @@ async def setup_dispatcher(bot: CLIBot) -> Dispatcher:
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     # Platform client - direct to OpenRouter for CLI testing
-    openrouter_key = os.environ.get("OPENROUTER_API_KEY", "")
+    openrouter_key = os.environ.get("OPENROUTER_API_KEY", "") or settings.openrouter_api_key
     if openrouter_key:
         from pydantic import SecretStr
         platform = PlatformClient(

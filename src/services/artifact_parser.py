@@ -68,7 +68,10 @@ async def parse_github_readme(github_url: str) -> str:
     match = re.match(r"https?://github\.com/([^/]+)/([^/]+)", github_url)
     if not match:
         return ""
-    owner, repo = match.group(1), match.group(2).rstrip(".git")
+    repo = match.group(2)
+    if repo.endswith(".git"):
+        repo = repo[:-4]
+    owner = match.group(1)
 
     async with httpx.AsyncClient(timeout=15) as client:
         for branch in ["main", "master"]:
