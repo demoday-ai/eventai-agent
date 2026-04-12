@@ -29,6 +29,7 @@ class AgentDeps:
     profile: GuestProfile | None
     recommendations: list[Recommendation]
     event: Event
+    support_history: list[str] | None = None
 
 
 def create_agent(platform_url: str, agent_token: str) -> Agent[AgentDeps, str]:
@@ -88,12 +89,19 @@ async def _build_system_prompt(ctx: RunContext[AgentDeps]) -> str:
 
     recs_summary = _format_recommendations(deps.recommendations, projects_map)
 
-    return build_agent_system_prompt(
+    prompt = build_agent_system_prompt(
         is_business=is_business,
         profile_info=profile_info,
         recs_summary=recs_summary,
         num_recommendations=len(deps.recommendations),
     )
+
+    # Inject support chat history if available
+    if deps.support_history:
+        support_text = "\n".join(deps.support_history)
+        prompt += f"\n\nИСТОРИЯ ОБЩЕНИЯ С ОРГАНИЗАТОРОМ:\n{support_text}"
+
+    return prompt
 
 
 def _format_profile(profile: GuestProfile) -> str:

@@ -128,9 +128,30 @@ async def cb_support_back(
 ) -> None:
     """Return from support to program view."""
     await callback.answer()
+
+    # Save support history for agent context injection
+    state_data = await state.get_data()
+    user_id = state_data.get("user_id")
+    event_id = state_data.get("event_id")
+    if user_id and event_id:
+        from src.models.support_log import SupportLog
+        support_result = await db.execute(
+            select(SupportLog)
+            .where(SupportLog.user_id == UUID(user_id), SupportLog.event_id == UUID(event_id))
+            .order_by(SupportLog.created_at.desc())
+            .limit(5)
+        )
+        support_entries = support_result.scalars().all()
+        support_history = []
+        for entry in reversed(support_entries):
+            support_history.append(f"Вопрос: {entry.question}")
+            if entry.answer:
+                support_history.append(f"Ответ организатора: {entry.answer}")
+        if support_history:
+            await state.update_data(support_history=support_history)
+
     await state.set_state(BotStates.view_program)
 
-    state_data = await state.get_data()
     profile_id = state_data.get("profile_id")
 
     if profile_id:

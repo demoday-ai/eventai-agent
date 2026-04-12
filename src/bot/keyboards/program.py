@@ -10,13 +10,18 @@ def program_keyboard() -> InlineKeyboardMarkup:
     ])
 
 
-def detail_keyboard(project_rank: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
+def detail_keyboard(project_rank: int, has_contact: bool = False) -> InlineKeyboardMarkup:
+    buttons = [
         [
             InlineKeyboardButton(text="Назад", callback_data="cmd:back"),
             InlineKeyboardButton(text="Вопросы к проекту", callback_data=f"questions:{project_rank}"),
         ],
-    ])
+    ]
+    if has_contact:
+        buttons.append([
+            InlineKeyboardButton(text="Связаться с автором", callback_data=f"contact:{project_rank}"),
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def confirm_profile_keyboard() -> InlineKeyboardMarkup:

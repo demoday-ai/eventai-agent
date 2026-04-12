@@ -295,6 +295,7 @@ async def view_program_text(
         profile=profile,
         recommendations=recs,
         event=event,
+        support_history=state_data.get("support_history"),
     )
 
     # Load chat history from state (before try block so it's always defined)

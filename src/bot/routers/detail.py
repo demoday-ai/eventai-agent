@@ -143,10 +143,11 @@ async def show_project_detail(
         current_project_title=project.title,
     )
 
+    has_contact = bool(project.telegram_contact)
     if isinstance(target, CallbackQuery):
-        await target.message.answer(card_text, reply_markup=detail_keyboard(project_rank))
+        await target.message.answer(card_text, reply_markup=detail_keyboard(project_rank, has_contact))
     else:
-        await target.answer(card_text, reply_markup=detail_keyboard(project_rank))
+        await target.answer(card_text, reply_markup=detail_keyboard(project_rank, has_contact))
 
 
 @router.callback_query(BotStates.view_detail, F.data == "cmd:back")
@@ -293,6 +294,43 @@ async def cb_generate_questions(
         await callback.message.answer(
             "Не удалось сгенерировать вопросы. Попробуйте позже."
         )
+
+
+@router.callback_query(BotStates.view_detail, F.data.startswith("contact:"))
+async def cb_contact_author(
+    callback: CallbackQuery, state: FSMContext, db: AsyncSession
+) -> None:
+    """Request contact with project author."""
+    await callback.answer()
+
+    state_data = await state.get_data()
+    project_id = state_data.get("current_project_id")
+    project_title = state_data.get("current_project_title", "проект")
+
+    if not project_id:
+        await callback.message.answer("Проект не найден.")
+        return
+
+    # Load project to get contact
+    result = await db.execute(
+        select(Project).where(Project.id == UUID(project_id))
+    )
+    project = result.scalar_one_or_none()
+    if not project or not project.telegram_contact:
+        await callback.message.answer("Контакт автора недоступен.")
+        return
+
+    contact = project.telegram_contact
+    author = project.author or "автор"
+
+    await callback.message.answer(
+        f"Контакт автора проекта \"{project_title}\":\n\n"
+        f"Автор: {author}\n"
+        f"Telegram: {contact}\n\n"
+        f"Шаблон для связи:\n"
+        f"\"Здравствуйте! Видел(а) ваш проект {project_title} на Demo Day. "
+        f"Интересует возможность сотрудничества.\""
+    )
 
 
 @router.message(BotStates.view_detail, F.text)
