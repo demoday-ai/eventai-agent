@@ -216,7 +216,7 @@ async def profile_confirm(
 
         text = await format_program(recs, db)
         await callback.message.answer(
-            f"Ваша программа:\n\n{text}",
+            text,
             reply_markup=program_keyboard(),
         )
     else:
@@ -295,7 +295,7 @@ async def trigger_recommendations(
 
         text = await format_program(recs, db)
         await message.answer(
-            f"Ваша программа:\n\n{text}",
+            text,
             reply_markup=program_keyboard(),
         )
     else:

@@ -222,6 +222,9 @@ asyncio.run(run())
 
 def _send(text: str) -> str:
     """Send message and wait for response."""
+    if not text.strip():
+        return "(пустой ввод)"
+
     # Lock to prevent concurrent access
     lock_fd = open(LOCK_FILE, "w")
     fcntl.flock(lock_fd, fcntl.LOCK_EX)
