@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     redis_password: str = ""
 
     # LLM
-    llm_model: str = "openai/gpt-5.1"
+    llm_model: str = "deepseek/deepseek-v3.2"
     embedding_model: str = "google/gemini-embedding-001"
 
     # Organizer
