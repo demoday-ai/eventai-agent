@@ -362,25 +362,7 @@ def _format_profile_text(profile: GuestProfile) -> str:
     return "\n".join(parts)
 
 
-async def _safe_send(message: Message, text: str, max_len: int = 4096) -> None:
-    """Send text, splitting into chunks if exceeding Telegram limit."""
-    if len(text) <= max_len:
-        await message.answer(text)
-        return
-
-    # Split by paragraphs first, then by length
-    chunks: list[str] = []
-    current = ""
-    for line in text.split("\n"):
-        if len(current) + len(line) + 1 > max_len:
-            if current:
-                chunks.append(current)
-            current = line
-        else:
-            current = f"{current}\n{line}" if current else line
-
-    if current:
-        chunks.append(current)
-
-    for chunk in chunks:
-        await message.answer(chunk)
+async def _safe_send(message: Message, text: str, **_kwargs) -> None:
+    """Send LLM text with Telegram-safe formatting via entities."""
+    from src.core.telegram_format import send_formatted
+    await send_formatted(message, text)
