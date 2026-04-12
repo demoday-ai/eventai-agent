@@ -2,18 +2,17 @@
 """
 Stateful chat interface for subagents.
 
-Starts cli_bot.py in background, communicates via files.
-Bot reads from /tmp/eventai_input, writes to /tmp/eventai_output.
+Each session gets its own bot process with isolated user_id.
 
 Usage:
-    # First call starts the bot:
-    python scripts/chat.py "сообщение"
-    python scripts/chat.py "@role:guest:student"   # button
-    python scripts/chat.py "!state"                # check state
-    python scripts/chat.py "!reset"                # kill & restart
+    python scripts/chat.py --session=student "/start"
+    python scripts/chat.py --session=student "@role:guest:student"
+    python scripts/chat.py --session=student "NLP и чат-боты"
+    python scripts/chat.py --session=student "!state"
+    python scripts/chat.py --session=student "!reset"
 
-Each call sends ONE message and prints the bot's response.
-Session persists between calls.
+Multiple sessions can run in parallel with different --session names.
+Each session has its own bot process, files, and user_id.
 """
 
 import fcntl
@@ -24,11 +23,26 @@ import sys
 import time
 from pathlib import Path
 
-INPUT_FILE = "/tmp/eventai_input"
-OUTPUT_FILE = "/tmp/eventai_output"
-PID_FILE = "/tmp/eventai_bot.pid"
-LOCK_FILE = "/tmp/eventai_bot.lock"
+
+def _parse_session() -> str:
+    """Extract --session=NAME from argv, default to 'default'."""
+    for i, arg in enumerate(sys.argv[1:], 1):
+        if arg.startswith("--session="):
+            sys.argv.pop(i)
+            return arg.split("=", 1)[1]
+    return "default"
+
+
+SESSION_NAME = _parse_session()
+SESSION_DIR = f"/tmp/eventai_{SESSION_NAME}"
+INPUT_FILE = f"{SESSION_DIR}/input"
+OUTPUT_FILE = f"{SESSION_DIR}/output"
+PID_FILE = f"{SESSION_DIR}/bot.pid"
+LOCK_FILE = f"{SESSION_DIR}/lock"
 TIMEOUT = 60
+
+# Each session gets a unique user_id (hash of session name)
+SESSION_USER_ID = 700 + abs(hash(SESSION_NAME)) % 100
 
 PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 
@@ -56,15 +70,15 @@ def _kill():
             os.kill(pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
-        os.unlink(PID_FILE)
-    for f in [INPUT_FILE, OUTPUT_FILE]:
-        if os.path.exists(f):
-            os.unlink(f)
+    import shutil
+    if os.path.exists(SESSION_DIR):
+        shutil.rmtree(SESSION_DIR)
 
 
 def _start():
     """Start the bot wrapper in background."""
     _kill()  # clean up any previous session
+    os.makedirs(SESSION_DIR, exist_ok=True)
 
     # Create the wrapper script that bridges files <-> cli_bot stdin/stdout
     wrapper = f"""
@@ -79,6 +93,9 @@ OUTPUT = '{OUTPUT_FILE}'
 open(INPUT, 'w').close()
 open(OUTPUT, 'w').close()
 
+import scripts.cli_bot as cli_bot_mod
+cli_bot_mod.USER_ID = {SESSION_USER_ID}
+cli_bot_mod.CHAT_ID = {SESSION_USER_ID}
 from scripts.cli_bot import CLIBot, setup_dispatcher, make_message, make_callback, _display_pipe
 
 async def run():
@@ -123,7 +140,7 @@ async def run():
                 return
 
             if line == '!state':
-                state = dp.fsm.get_context(bot, user_id=777, chat_id=777)
+                state = dp.fsm.get_context(bot, user_id={SESSION_USER_ID}, chat_id={SESSION_USER_ID})
                 current = await state.get_state()
                 with open(OUTPUT, 'a') as f:
                     f.write(f'STATE: {{current or "(none)"}}\\n')
