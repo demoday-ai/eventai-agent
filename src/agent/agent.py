@@ -67,13 +67,26 @@ def create_agent(platform_url: str, agent_token: str) -> Agent[AgentDeps, str]:
 
 async def _build_system_prompt(ctx: RunContext[AgentDeps]) -> str:
     """Dynamic system prompt builder called by PydanticAI before each run."""
+    from sqlalchemy import select
+    from src.models.project import Project
+
     deps = ctx.deps
     is_business = deps.user.role_code == "business"
 
     profile_info = (
         _format_profile(deps.profile) if deps.profile else "Профиль не создан"
     )
-    recs_summary = _format_recommendations(deps.recommendations)
+
+    # Load project details for recommendations context
+    project_ids = [r.project_id for r in deps.recommendations]
+    projects_map: dict = {}
+    if project_ids:
+        result = await deps.db.execute(
+            select(Project).where(Project.id.in_(project_ids))
+        )
+        projects_map = {p.id: p for p in result.scalars().all()}
+
+    recs_summary = _format_recommendations(deps.recommendations, projects_map)
 
     return build_agent_system_prompt(
         is_business=is_business,
@@ -101,12 +114,24 @@ def _format_profile(profile: GuestProfile) -> str:
     return "\n".join(parts) if parts else "Нет данных"
 
 
-def _format_recommendations(recs: list[Recommendation]) -> str:
-    """Format recommendation list into compact summary for the system prompt."""
+def _format_recommendations(recs: list[Recommendation], projects: dict | None = None) -> str:
+    """Format recommendation list with project details for the system prompt."""
     if not recs:
         return "Нет рекомендаций"
 
+    projects = projects or {}
     lines: list[str] = []
     for rec in recs:
-        lines.append(f"#{rec.rank}")
+        project = projects.get(rec.project_id)
+        if project:
+            tags = ", ".join(project.tags[:3]) if project.tags else ""
+            stack = ", ".join(project.tech_stack[:3]) if project.tech_stack else ""
+            line = f"#{rec.rank} {project.title}"
+            if tags:
+                line += f" | теги: {tags}"
+            if stack:
+                line += f" | стек: {stack}"
+            lines.append(line)
+        else:
+            lines.append(f"#{rec.rank}")
     return "\n".join(lines)
