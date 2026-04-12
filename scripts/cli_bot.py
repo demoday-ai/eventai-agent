@@ -24,7 +24,11 @@ import logging
 import os
 import sys
 from collections import deque
+from pathlib import Path
 from uuid import uuid4
+
+# Add project root to path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 # Env defaults
 os.environ.setdefault("BOT_TOKEN", "42:TEST")
