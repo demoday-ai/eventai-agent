@@ -13,14 +13,14 @@ Telegram-бот с AI-агентом для навигации по Demo Day AI 
 
 ### Развернутые сервисы (85.198.96.191)
 
-| Сервис | URL |
-|--------|-----|
-| Telegram-бот | [@demoday_ai_talent_hub_test_bot](https://t.me/demoday_ai_talent_hub_test_bot) |
-| LLM Platform API | http://85.198.96.191:8000 |
-| Grafana (метрики) | http://85.198.96.191:3002 (admin/admin) |
-| Prometheus | http://85.198.96.191:9090 |
-| Langfuse (трейсы) | http://85.198.96.191:3001 |
-| Bot health | http://85.198.96.191:8080/health |
+| Сервис | URL | Логин | Пароль |
+|--------|-----|-------|--------|
+| Telegram-бот | [@demoday_ai_talent_hub_test_bot](https://t.me/demoday_ai_talent_hub_test_bot) | - | - |
+| LLM Platform API | http://85.198.96.191:8000 | - | - |
+| Grafana (метрики) | http://85.198.96.191:3002 | admin | admin |
+| Prometheus | http://85.198.96.191:9090 | - | - |
+| Langfuse (трейсы) | http://85.198.96.191:3001 | admin@platform.local | admin12345 |
+| Bot health | http://85.198.96.191:8080/health | - | - |
 
 ## Задача
 
