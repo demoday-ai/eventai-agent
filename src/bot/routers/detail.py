@@ -6,7 +6,6 @@ Handles:
 - "Вопросы к проекту" button -> generate questions via direct LLM call
 """
 
-import json
 import logging
 from uuid import UUID
 
@@ -265,49 +264,16 @@ async def cb_generate_questions(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            response_format={"type": "json_object"},
         )
 
-        content = resp["choices"][0]["message"]["content"]
-        data = json.loads(content)
-        questions = data.get("questions", [])
-
-        if not questions:
+        content = resp["choices"][0]["message"]["content"].strip()
+        if not content:
             await callback.message.answer("Не удалось сгенерировать вопросы.")
             return
 
-        lines = [
-            f"Вопросы для проекта #{project_rank}:",
-            f"{project.title}",
-            "",
-        ]
-        for i, q in enumerate(questions[:5], 1):
-            lines.append(f"{i}. {q}")
+        header = f"Вопросы для проекта #{project_rank}:\n{project.title}\n\n"
+        await callback.message.answer(header + content)
 
-        await callback.message.answer("\n".join(lines))
-
-    except json.JSONDecodeError:
-        # LLM returned non-JSON - retry with formatting instruction
-        logger.warning("Q&A LLM returned non-JSON, retrying with format fix")
-        try:
-            fix_resp = await platform.chat_completion(
-                messages=[
-                    {"role": "system", "content": "Преобразуй текст в JSON: {\"questions\": [\"вопрос1\", \"вопрос2\", ...]}"},
-                    {"role": "user", "content": content},
-                ],
-                response_format={"type": "json_object"},
-            )
-            fix_data = json.loads(fix_resp["choices"][0]["message"]["content"])
-            questions = fix_data.get("questions", [])
-            if questions:
-                lines = [f"Вопросы для проекта #{project_rank}:", f"{project.title}", ""]
-                for i, q in enumerate(questions[:5], 1):
-                    lines.append(f"{i}. {q}")
-                await callback.message.answer("\n".join(lines))
-                return
-        except Exception:
-            pass
-        await callback.message.answer("Не удалось сгенерировать вопросы.")
     except Exception as e:
         logger.error("Q&A generation failed: %s", e)
         await callback.message.answer(

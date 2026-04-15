@@ -383,7 +383,7 @@ def test_qa_prompts():
         project_tech_stack="Python, LangChain",
     )
     assert "ChatLaw" in usr
-    assert "JSON" in sys
+    assert "нумерованный" in sys.lower() or "список" in sys.lower()
 
     sys, usr = build_business_qa_prompt(
         objective="technology",
