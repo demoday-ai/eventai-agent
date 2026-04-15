@@ -58,10 +58,12 @@ class PlatformClient:
         logger.info("Registered with platform as %s (id=%s)", self.agent_name, data["id"])
         return data["id"]
 
-    async def _request(self, method: str, path: str, **kwargs) -> httpx.Response:
+    async def _request(self, method: str, path: str, session_id: str | None = None, **kwargs) -> httpx.Response:
         """Make authenticated request. Auto-reregister on 401."""
         headers = kwargs.pop("headers", {})
         headers["Authorization"] = f"Bearer {self.token}"
+        if session_id:
+            headers["X-Session-Id"] = session_id
 
         resp = await self._client.request(method, f"{self.platform_url}{path}", headers=headers, **kwargs)
 
@@ -85,6 +87,7 @@ class PlatformClient:
         model: str | None = None,
         tools: list[dict] | None = None,
         response_format: dict | None = None,
+        session_id: str | None = None,
     ) -> dict:
         """POST /v1/chat/completions through platform."""
         from src.core.config import settings
@@ -98,7 +101,7 @@ class PlatformClient:
         if response_format:
             payload["response_format"] = response_format
 
-        resp = await self._request("POST", "/v1/chat/completions", json=payload)
+        resp = await self._request("POST", "/v1/chat/completions", session_id=session_id, json=payload)
         return resp.json()
 
     @retry(
@@ -106,7 +109,7 @@ class PlatformClient:
         wait=wait_exponential(multiplier=1, min=1, max=4),
         retry=retry_if_exception_type((httpx.ConnectError, httpx.ReadTimeout)),
     )
-    async def embedding(self, text: str, model: str | None = None) -> list[float]:
+    async def embedding(self, text: str, model: str | None = None, session_id: str | None = None) -> list[float]:
         """POST /v1/embeddings through platform."""
         from src.core.config import settings
 
@@ -114,7 +117,7 @@ class PlatformClient:
             "model": model or settings.embedding_model,
             "input": text,
         }
-        resp = await self._request("POST", "/v1/embeddings", json=payload)
+        resp = await self._request("POST", "/v1/embeddings", session_id=session_id, json=payload)
         data = resp.json()
         return data["data"][0]["embedding"]
 
