@@ -2,6 +2,15 @@
 
 Telegram-бот с AI-агентом для навигации по Demo Day AI Talent Hub (ИТМО). Профилирование через диалог, персональные рекомендации проектов, анализ GitHub-репозиториев, инструменты агента.
 
+## Система EventAI
+
+| Репо | Назначение | Стек |
+|------|-----------|------|
+| **[eventai-agent](https://github.com/demoday-ai/eventai-agent)** (этот репо) | AI-агент, Telegram-бот | aiogram 3.x, PydanticAI, pgvector, Redis |
+| [llm-agent-platform](https://github.com/demoday-ai/llm-agent-platform) | LLM-инфраструктура | FastAPI, Prometheus, Grafana, Langfuse |
+
+Агент использует llm-agent-platform как LLM proxy: все chat completions и embeddings идут через платформу с метриками, трейсами, circuit breaker и guardrails.
+
 ## Задача
 
 Demo Day AI Talent Hub (ИТМО) - 330 проектов, 10 залов, 2 дня. Проблемы:
@@ -30,36 +39,74 @@ Demo Day AI Talent Hub (ИТМО) - 330 проектов, 10 залов, 2 дн�
 - **Поддержка:** пересылка вопросов организатору с tracking ID
 - **Деградация:** LLM недоступна -> tag overlap scoring, timeout -> fallback
 
-## Быстрый старт
-
-```bash
-# 1. Клонировать
-git clone https://github.com/demoday-ai/eventai-agent.git
-cd eventai-agent
-
-# 2. Настроить
-cp .env.example .env
-# Заполнить BOT_TOKEN и OPENROUTER_API_KEY
-
-# 3. Запустить (postgres + redis + bot, auto-seed на первом запуске)
-docker compose up -d
-
-# Бот доступен в Telegram по ссылке из @BotFather
-```
-
 ## Архитектура
 
 ```
-Telegram -> aiogram 3.x (FSM 8 states, 4 middleware)
+                         docker network: eventai-net
+
+  llm-agent-platform                          eventai-agent
+  +--------------------------+                +---------------------------+
+  | app:8000                 |  LLM calls     | bot:8080                  |
+  |   /v1/chat/completions   |<---------------|   aiogram 3.x (FSM)       |
+  |   /v1/embeddings         |                |   PydanticAI (8 tools)    |
+  |   circuit breaker        |                |   telegramify-markdown    |
+  |   guardrails             |                +---------------------------+
+  +--------------------------+                | postgres:5432             |
+  | prometheus:9090          |                |   pgvector (13 tables)    |
+  | grafana:3000             |                | redis:6379                |
+  | langfuse:3001            |                |   FSM state, rate limit   |
+  +--------------------------+                +---------------------------+
               |
               v
-         PydanticAI Agent (single-turn, 8 tools)
-              |
-              +-> PostgreSQL + pgvector (13 tables, cosine search 3072d)
-              +-> Redis (FSM state, rate limiting, per-user mutex)
-              +-> OpenRouter API (DeepSeek V3.2 chat, Gemini embedding)
-              +-> gh CLI (GitHub REST API, live repo analysis)
-              +-> telegramify-markdown (LLM output -> Telegram entities)
+       OpenRouter API
+    (DeepSeek V3.2, Gemini)
+```
+
+## Observability
+
+Все LLM-вызовы (chat + embeddings) проходят через llm-agent-platform:
+
+| Слой | Что отслеживается |
+|------|------------------|
+| **Prometheus** | llm_requests_total, llm_embedding_requests_total, duration, tokens_in/out, cost |
+| **Grafana** | Дашборд: latency p50/p95, traffic distribution, cost per model, TTFT/TPOT, circuit breaker |
+| **Langfuse** | Трейсы каждого LLM-вызова: input/output, tokens, cost, duration, provider |
+| **OpenTelemetry** | X-Trace-Id в response headers, span per HTTP request |
+| **Guardrails** | Prompt injection detection (user messages), secret leak masking (responses) |
+| **Circuit breaker** | Per-provider: CLOSED -> OPEN (5 errors/60s) -> HALF_OPEN (probe) -> CLOSED |
+
+## Быстрый старт
+
+### С llm-agent-platform (рекомендуется)
+
+```bash
+# 1. Создать docker network
+docker network create eventai-net
+
+# 2. Запустить LLM платформу
+git clone https://github.com/demoday-ai/llm-agent-platform.git
+cd llm-agent-platform
+cp .env.example .env
+# Заполнить OPENROUTER_API_KEY и MASTER_TOKEN в .env
+docker compose up -d
+# Ждем: app healthy, prometheus:9090, grafana:3000, langfuse:3001
+
+# 3. Запустить агента
+cd ../eventai-agent
+cp .env.example .env
+# Заполнить BOT_TOKEN, PLATFORM_URL=http://app:8000, MASTER_TOKEN (тот же что в платформе)
+docker compose up -d
+# Бот доступен в Telegram
+```
+
+### Standalone (без платформы, без мониторинга)
+
+```bash
+git clone https://github.com/demoday-ai/eventai-agent.git
+cd eventai-agent
+cp .env.example .env
+# Заполнить BOT_TOKEN и OPENROUTER_API_KEY (без MASTER_TOKEN)
+docker compose up -d
 ```
 
 ## Стек
@@ -80,11 +127,14 @@ BOT_TOKEN=test python3.12 -m pytest tests/ --tb=short -q
 # Coverage
 BOT_TOKEN=test python3.12 -m pytest tests/ --cov=src --cov-report=term-missing
 
-# Интерактивный CLI
+# Интерактивный CLI (standalone)
 OPENROUTER_API_KEY=<key> python3.12 scripts/cli_bot.py
 
-# Stateful chat для автоматизированного тестирования (изолированные сессии)
-OPENROUTER_API_KEY=<key> python3.12 scripts/chat.py --session=<name> "<сообщение>"
+# Интерактивный CLI (platform mode)
+PLATFORM_URL=http://localhost:8000 MASTER_TOKEN=<token> python3.12 scripts/cli_bot.py
+
+# Stateful chat для автоматизированного тестирования
+python3.12 scripts/chat.py --session=<name> "<сообщение>"
 ```
 
 ## Структура
@@ -123,7 +173,6 @@ tests/                 # 202 tests
 
 ## За рамками PoC
 
-- Интеграция с llm-agent-platform (LLM proxy, мониторинг, guardrails)
 - Интеграция с eventai-platform (общая БД, удаление встроенного бота)
 - Организация встреч 1:1 (только запрос контакта автора)
 - Загрузка артефактов студентами через бота

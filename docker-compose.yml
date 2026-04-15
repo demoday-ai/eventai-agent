@@ -18,6 +18,7 @@ services:
     logging:
       driver: json-file
       options: { max-size: "50m", max-file: "3" }
+    networks: [eventai-net, default]
 
   postgres:
     image: pgvector/pgvector:pg16
@@ -52,3 +53,7 @@ services:
 
 volumes:
   pgdata:
+
+networks:
+  eventai-net:
+    external: true

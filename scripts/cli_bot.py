@@ -217,22 +217,34 @@ async def setup_dispatcher(bot: CLIBot) -> Dispatcher:
     engine = create_async_engine(settings.database_url, pool_size=5)
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-    # Platform client - direct to OpenRouter for CLI testing
+    # Platform client
     openrouter_key = os.environ.get("OPENROUTER_API_KEY", "") or settings.openrouter_api_key
-    if openrouter_key:
+    master_token = os.environ.get("MASTER_TOKEN", "") or settings.master_token
+
+    if openrouter_key and not master_token:
+        # Standalone mode: direct OpenRouter
         from pydantic import SecretStr
         platform = PlatformClient(
             platform_url="https://openrouter.ai/api",
             master_token="unused",
         )
         platform._token = SecretStr(openrouter_key)
-        print(f"{DIM}LLM: OpenRouter ({settings.llm_model}){RESET}")
+        print(f"{DIM}LLM: OpenRouter standalone ({settings.llm_model}){RESET}")
+    elif master_token:
+        # Platform mode: register with llm-agent-platform
+        platform_url = os.environ.get("PLATFORM_URL", "") or settings.platform_url
+        platform = PlatformClient(
+            platform_url=platform_url,
+            master_token=master_token,
+        )
+        await platform.register()
+        print(f"{DIM}LLM: Platform {platform_url} ({settings.llm_model}){RESET}")
     else:
         platform = PlatformClient(
             platform_url=settings.platform_url,
-            master_token=settings.master_token,
+            master_token="unused",
         )
-        print(f"{YELLOW}WARNING: OPENROUTER_API_KEY not set, LLM calls will fail{RESET}")
+        print(f"{YELLOW}WARNING: No OPENROUTER_API_KEY or MASTER_TOKEN, LLM calls will fail{RESET}")
 
     # DB session middleware (simplified for CLI)
     from aiogram import BaseMiddleware
