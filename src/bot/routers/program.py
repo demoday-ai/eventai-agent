@@ -303,7 +303,7 @@ async def view_program_text(
     program_chat.append({"role": "user", "content": message.text})
 
     try:
-        agent = create_agent(platform.platform_url, platform.token)
+        agent = create_agent(platform.platform_url, platform.token, platform.current_session_id)
 
         # Trim history
         if len(program_chat) > MAX_CHAT_HISTORY:

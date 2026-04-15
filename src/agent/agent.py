@@ -32,19 +32,27 @@ class AgentDeps:
     support_history: list[str] | None = None
 
 
-def create_agent(platform_url: str, agent_token: str) -> Agent[AgentDeps, str]:
+def create_agent(platform_url: str, agent_token: str, session_id: str | None = None) -> Agent[AgentDeps, str]:
     """Create and configure the PydanticAI agent.
 
     Args:
-        platform_url: Base URL of llm-agent-platform.
-        agent_token: Bearer token obtained after platform registration.
+        platform_url: Base URL of llm-agent-platform or OpenRouter.
+        agent_token: Bearer token (platform) or API key (standalone).
+        session_id: Optional session ID for Langfuse trace grouping.
 
     Returns:
         Configured Agent instance with all tools registered.
     """
+    import httpx
+    headers = {}
+    if session_id:
+        headers["X-Session-Id"] = session_id
+    http_client = httpx.AsyncClient(headers=headers) if headers else None
+
     provider = OpenAIProvider(
         base_url=f"{platform_url}/v1",
         api_key=agent_token,
+        http_client=http_client,
     )
     from src.core.config import settings
     model = OpenAIModel(
